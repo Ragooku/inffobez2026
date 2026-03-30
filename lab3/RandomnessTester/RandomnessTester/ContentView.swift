@@ -2,7 +2,6 @@
 //  ContentView.swift
 //  StreamCipherApp
 //
-//  Лабораторная работа №1
 //
 //
 
@@ -45,8 +44,18 @@ struct LCGGenerator {
 }
 
 //XOR
+func xorBytes(_ a: UInt8, _ b: UInt8) -> UInt8 {
+    return (a | b) & ~(a & b)
+}
+
+// XOR-шифрование: каждый байт чанка смешивается с байтом гаммы
 func xorStreamChunk(_ chunk: ArraySlice<UInt8>, prng: inout LCGGenerator) -> [UInt8] {
-    chunk.map { $0 ^ prng.nextByte() }
+    var result = [UInt8]()
+    result.reserveCapacity(chunk.count)
+    for byte in chunk {
+        result.append(xorBytes(byte, prng.nextByte()))
+    }
+    return result
 }
 
 @MainActor
