@@ -45,9 +45,17 @@ struct LCGGenerator {
 }
 
 //XOR
+func xorBytes(_ a: UInt8, _ b: UInt8) -> UInt8 {
+    return (a | b) & ~(a & b)
+}
 
 func xorStreamChunk(_ chunk: ArraySlice<UInt8>, prng: inout LCGGenerator) -> [UInt8] {
-    chunk.map { $0 ^ prng.nextByte() }
+    var result = [UInt8]()
+    result.reserveCapacity(chunk.count)
+    for byte in chunk {
+        result.append(xorBytes(byte, prng.nextByte()))
+    }
+    return result
 }
 
 //GOST
@@ -287,7 +295,7 @@ struct ContentView: View {
                 leftPanel.frame(minWidth: 380, maxWidth: 480)
                 rightPanel.frame(minWidth: 320)
             }
-            .navigationTitle("Лаб 4 — ГОСТ 28147-89, вариант 6")
+            .navigationTitle("Лаб 4, вариант 6")
         }
         .frame(minWidth: 820, minHeight: 540)
     }
