@@ -202,11 +202,86 @@ func decryptText(_ blocks: [EGBlock], priv: EGPrivateKey, pub: EGPublicKey, tota
 }
 ```
 
----
+## Дополнение по коду - Эль-Гамаля 
 
-## Итог
+### Генерация простого числа
 
-| Компонент | Назначение |
-|---|---|
-| Тест Миллера–Рабина | Генерация больших простых чисел для Эль-Гамаля |
-| Эль-Гамаль | Асимметричное шифрование текста по открытому ключу |
+Генерирует случайное нечётное число c нужной битовой длины
+
+Проверяет его на простоту с помощью Миллера-Рабера
+
+Повторяет, пока не найдёт простое число
+```
+func generatePrime(bits: Int) -> BigUInt {
+        while true {
+            let c = randomOddBigUInt(bits: bits)
+            if isProbablePrime(c) { return c }
+        }
+    }
+```
+### Генерация ключей Эль-Гамаля
+
+```
+  struct EGPublicKey  { let p, g, y: BigUInt }
+    struct EGPrivateKey { let p, g, x: BigUInt }
+    struct EGKeyPair    { let pub: EGPublicKey; let priv: EGPrivateKey }
+
+    func generateKeyPair(bits: Int) -> EGKeyPair {
+        let p = generatePrime(bits: bits)
+        let g = randomBigUInt(in: BigUInt(2), p - BigUInt(2))
+        let x = randomBigUInt(in: BigUInt(2), p - BigUInt(2))
+        let y = modPow(g, x, p)
+        return EGKeyPair(pub: EGPublicKey(p: p, g: g, y: y),
+                         priv: EGPrivateKey(p: p, g: g, x: x))
+    }
+```
+p — большое простое число (модуль)
+
+g — генератор (случайное число от 2 до p-2)
+
+x — секретный ключ (случайное число от 2 до p-2)
+
+y = g^x mod p — открытый ключ
+
+Пара ключей:
+
+Открытый ключ: (p, g, y) — можно передавать по сети
+
+Закрытый ключ: (p, g, x) — хранится в секрете
+
+### Шифрование блока
+
+Для сообщения m (число меньше p):
+
+Выбирается случайное эфемерное число k (для каждого блока новое)
+
+c1 = g^k mod p — "маска" для ключа
+
+c2 = m * y^k mod p — зашифрованное сообщение
+
+Шифротекст: пара (c1, c2)
+```
+ func egEncryptBlock(_ m: BigUInt, pub: EGPublicKey) -> EGBlock {
+        let k  = randomBigUInt(in: BigUInt(2), pub.p - BigUInt(2))
+        let c1 = modPow(pub.g, k, pub.p)
+        let c2 = (m * modPow(pub.y, k, pub.p)) % pub.p
+        return EGBlock(c1: c1, c2: c2)
+    }
+```
+### Дешифрование блока
+
+s = c1^x mod p — восстанавливаем общий секрет g^(k*x)
+
+sInv = s^(p-2) mod p — обратный элемент (малая теорема Ферма)
+
+m = c2 * sInv mod p — получаем исходное сообщение
+
+```
+func egDecryptBlock(_ b: EGBlock, priv: EGPrivateKey) -> BigUInt {
+        let s    = modPow(b.c1, priv.x, priv.p)
+        let sInv = modPow(s, priv.p - BigUInt(2), priv.p)
+        return (b.c2 * sInv) % priv.p
+    }
+```
+
+## Дополнение по коду - Рабин Миллер
