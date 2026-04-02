@@ -221,6 +221,20 @@ func generatePrime(bits: Int) -> BigUInt {
 ```
 ### Генерация ключей Эль-Гамаля
 
+p — большое простое число (модуль)
+
+g — генератор (случайное число от 2 до p-2)
+
+x — секретный ключ (случайное число от 2 до p-2)
+
+y = g^x mod p — открытый ключ
+
+Пара ключей:
+
+Открытый ключ: (p, g, y) — можно передавать по сети
+
+Закрытый ключ: (p, g, x) — хранится в секрете
+
 ```
   struct EGPublicKey  { let p, g, y: BigUInt }
     struct EGPrivateKey { let p, g, x: BigUInt }
@@ -235,19 +249,6 @@ func generatePrime(bits: Int) -> BigUInt {
                          priv: EGPrivateKey(p: p, g: g, x: x))
     }
 ```
-p — большое простое число (модуль)
-
-g — генератор (случайное число от 2 до p-2)
-
-x — секретный ключ (случайное число от 2 до p-2)
-
-y = g^x mod p — открытый ключ
-
-Пара ключей:
-
-Открытый ключ: (p, g, y) — можно передавать по сети
-
-Закрытый ключ: (p, g, x) — хранится в секрете
 
 ### Шифрование блока
 
@@ -285,3 +286,89 @@ func egDecryptBlock(_ b: EGBlock, priv: EGPrivateKey) -> BigUInt {
 ```
 
 ## Дополнение по коду - Рабин Миллер
+
+Просеивание отсекает очевидно составные числа делением на список малых простых — это быстрее, чем сразу запускать полный тест.
+
+Проверяет, не равно ли n одному из малых простых чисел
+
+Вычисляет n mod p для каждого малого простого p
+
+Если остаток = 0 → число составное (кроме случая, когда n == p)
+
+```
+private let smallPrimes: [UInt32] = [3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223,227,229,233,239,241,251]
+
+    private func passesSieve(_ n: BigUInt) -> Bool {
+        for sp in smallPrimes {
+            if n == BigUInt(UInt64(sp)) { return true }
+            if mod32(n, sp) == 0 { return false }
+        }
+        return true
+    }
+```
+
+### Взятие по модулю (mod32) - метод Горнера
+
+base = 2^32 mod m (переход между 32-битными "цифрами")
+
+Проходит по словам числа от старших к младшим
+```
+private func mod32(_ n: BigUInt, _ m: UInt32) -> UInt32 {
+        let base: UInt64 = (UInt64(1) << 32) % UInt64(m)
+        var rem: UInt64 = 0
+        for w in n.words.reversed() {
+            rem = (rem * base + UInt64(w)) % UInt64(m)
+        }
+        return UInt32(rem)
+    }
+```
+
+### Возведение в степень по модулю
+
+Бинарное возведение в степень (справа налево)
+
+```
+func modPow(_ base: BigUInt, _ exp: BigUInt, _ mod: BigUInt) -> BigUInt {
+        guard !mod.isOne else { return .zero }
+        var result = BigUInt.one
+        var b = base % mod
+        var e = exp
+        while !e.isZero {
+            if e.bit(0) { result = (result * b) % mod }
+            e = e >> 1
+            b = (b * b) % mod
+        }
+        return result
+    }
+```
+
+### Тест Миллера-Рабер
+
+Это алгоритм проверки чисел на простоту. Алгоритм сначала отсеивает малые простые и чётные числа, затем раскладывает n−1, после чего выполняет несколько раундов с разными случайными a. Если ни одно из условий не выполняется — число гарантированно составное. Если выполняется — число считается простым с вероятностью ошибки не более 1/4ʳ, где r — число раундов.
+
+Проверяем на простоту
+
+```
+if n < BigUInt(2) { return false }
+        if n == BigUInt(2) || n == BigUInt(3) { return true }
+        if n.isEven { return false }
+        if !passesSieve(n) { return false }
+```
+
+Разложение
+
+```
+   var d = n - .one; var r = 0
+        while d.isEven { d = d >> 1; r += 1 }
+```
+
+rounds раундов проверки (по умолчанию 20)
+```
+for _ in 0..<(r - 1) {
+                x = (x * x) % n
+                if x == nMinus1 { composite = false; break }
+            }
+            if composite { return false }
+        }
+        return true
+```
